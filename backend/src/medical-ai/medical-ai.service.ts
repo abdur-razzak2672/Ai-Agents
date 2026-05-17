@@ -25,17 +25,23 @@ export class MedicalAiService {
 
   async analyzeSymptoms(userId: string, symptoms: string) {
     const prompt = `
-      You are an expert AI medical assistant. A user has reported the following symptoms:
+      You are an expert AI medical assistant. A user has reported the following input:
       "${symptoms}"
 
       Your task is to:
-      1. Analyze the symptoms and identify potential conditions (disclaimer: this is not a final diagnosis).
-      2. Generate a structured preliminary prescription.
-      3. Suggest necessary diagnostic tests (e.g., Blood test, X-ray).
-      4. Provide advice on lifestyle or immediate care.
+      1. Verify if the input actually contains medical symptoms, health-related queries, or conditions. 
+      2. CLARITY CHECK: If the input is purely conversational (e.g., "hello", "sorry"), OR if the symptoms are too vague and require more context (e.g., just saying "my head hurts" without duration or severity), set "isValid" to false.
+      3. If "isValid" is false, provide a polite "errorMessage" asking the user clarifying questions (e.g., "Could you tell me how long your head has been hurting and if you have any other symptoms?"), and leave the other fields empty.
+      4. If "isValid" is true (the user has provided clear, detailed symptoms), analyze the symptoms and identify potential conditions (disclaimer: this is not a final diagnosis).
+      5. Generate a structured preliminary prescription.
+      6. Suggest necessary diagnostic tests.
+      7. Provide advice on lifestyle or immediate care.
 
-      Return the response in the following JSON format:
+      Return the response in the exact following JSON format:
       {
+        "isValid": true,
+        "errorMessage": null,
+        "summarizedSymptoms": "Short string of extracted keywords (e.g. 'Cold, Fever')",
         "potentialConditions": ["Condition 1", "Condition 2"],
         "prescription": {
           "medications": [
@@ -56,6 +62,10 @@ export class MedicalAiService {
       const response = result.response;
       const aiResponse = JSON.parse(response.text());
 
+      if (aiResponse.isValid === false) {
+        return { isValid: false, message: aiResponse.errorMessage };
+      }
+
       // Ensure user exists
       await this.prisma.user.upsert({
         where: { id: userId },
@@ -67,14 +77,14 @@ export class MedicalAiService {
       const consultation = await this.prisma.consultation.create({
         data: {
           userId,
-          symptoms,
+          symptoms: aiResponse.summarizedSymptoms || symptoms, // Fallback to raw if not present
           aiPrescription: aiResponse.prescription,
           diagnosticTests: aiResponse.diagnosticTests,
           status: 'PENDING',
         },
       });
 
-      return { consultation, analysis: aiResponse };
+      return { isValid: true, consultation, analysis: aiResponse };
     } catch (error: any) {
       console.error('Medical AI Error:', error);
       throw new InternalServerErrorException('Failed to analyze symptoms.');

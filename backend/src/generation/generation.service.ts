@@ -7,11 +7,11 @@ export class GenerationService {
   constructor(
     private prisma: PrismaService,
     private aiService: AiService,
-  ) {}
+  ) { }
 
   async generateFromUrl(url: string) {
     const aiResult = await this.aiService.generateCode(url);
-    
+
     const generation = await this.prisma.generation.create({
       data: {
         url,

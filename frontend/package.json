@@ -9,8 +9,10 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@codesandbox/sandpack-react": "^2.20.0",
     "@monaco-editor/react": "^4.7.0",
     "axios": "^1.16.1",
+    "face-api.js": "^0.22.2",
     "framer-motion": "^12.38.0",
     "html2canvas": "^1.4.1",
     "jspdf": "^4.2.1",

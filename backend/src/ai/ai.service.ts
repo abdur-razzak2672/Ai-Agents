@@ -15,7 +15,7 @@ export class AiService {
       throw new InternalServerErrorException('GEMINI_API_KEY is not defined in environment variables.');
     }
     this.genAI = new GoogleGenerativeAI(apiKey);
-    this.model = this.genAI.getGenerativeModel({ 
+    this.model = this.genAI.getGenerativeModel({
       model: 'gemini-2.5-flash',
       generationConfig: { responseMimeType: 'application/json' }
     });
@@ -29,13 +29,13 @@ export class AiService {
         },
       });
       const $ = cheerio.load(data);
-      
+
       const title = $('title').text();
       const metaDescription = $('meta[name="description"]').attr('content') || '';
       const bodyText = $('body').text().substring(0, 2000);
-      
+
       $('script, style, iframe, noscript, footer, nav').remove();
-      
+
       const sections: string[] = [];
       $('body > div, body > section, body > header, body > main').each((i, el) => {
         if (i < 5) {

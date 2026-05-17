@@ -138,11 +138,10 @@ export default function ReplicationPage() {
                 <button
                   key={item.id}
                   onClick={() => setGeneration(item)}
-                  className={`w-full text-left p-3 rounded-xl transition-all duration-200 group flex items-center gap-3 ${
-                    generation?.id === item.id
+                  className={`w-full text-left p-3 rounded-xl transition-all duration-200 group flex items-center gap-3 ${generation?.id === item.id
                       ? 'bg-indigo-50 border border-indigo-100'
                       : 'hover:bg-slate-50 border border-transparent'
-                  }`}
+                    }`}
                 >
                   <div className={`p-2 rounded-lg ${generation?.id === item.id ? 'bg-indigo-100 text-indigo-600' : 'bg-slate-50 text-slate-400'}`}>
                     <Globe className="w-4 h-4" />
@@ -202,21 +201,19 @@ export default function ReplicationPage() {
             <div className="flex bg-slate-50 p-1 rounded-xl border border-slate-200">
               <button
                 onClick={() => setView('preview')}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                  view === 'preview'
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${view === 'preview'
                     ? 'bg-indigo-600 text-white shadow-md'
                     : 'text-slate-400 hover:text-slate-700'
-                }`}
+                  }`}
               >
                 <Eye className="w-4 h-4" /> Preview
               </button>
               <button
                 onClick={() => setView('code')}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                  view === 'code'
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${view === 'code'
                     ? 'bg-indigo-600 text-white shadow-md'
                     : 'text-slate-400 hover:text-slate-700'
-                }`}
+                  }`}
               >
                 <Code2 className="w-4 h-4" /> Code
               </button>

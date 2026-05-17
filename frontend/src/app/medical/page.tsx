@@ -5,34 +5,15 @@ import Link from 'next/link';
 import { analyzeSymptoms, getMedicalHistory, verifyPrescription } from '@/lib/api';
 import { motion, AnimatePresence } from 'framer-motion';
 import jsPDF from 'jspdf';
+import * as faceapi from 'face-api.js';
 import {
-  Stethoscope,
-  Send,
-  User,
-  ShieldCheck,
-  Download,
-  Clock,
-  CheckCircle2,
-  ChevronRight,
-  Activity,
-  Plus,
-  ArrowLeft,
-  Printer,
-  Zap,
-  Info,
-  Search,
-  History as HistoryIcon,
-  Layout,
-  Code,
-  Eye,
-  Sparkles,
-  Settings,
-  MoreVertical,
-  Cpu,
-  Home
+  Stethoscope, Send, User, ShieldCheck, Download, Clock, CheckCircle2, ChevronRight,
+  Activity, Plus, ArrowLeft, Printer, Zap, Info, Search, History as HistoryIcon,
+  Layout, Code, Eye, Sparkles, Settings, MoreVertical, Cpu, Home,
+  Video, Mic, MicOff, PhoneOff
 } from 'lucide-react';
 
-// Professional Prescription Preview (Light Theme)
+// Professional Prescription Preview
 const ProfessionalPrescription = ({ consultation, innerRef }: { consultation: any, innerRef: React.RefObject<HTMLDivElement | null> }) => {
   if (!consultation) return null;
   const prescription = consultation.doctorPrescription || consultation.aiPrescription;
@@ -138,11 +119,55 @@ export default function MedicalAi() {
   const [userId] = useState('user-123');
   const [downloading, setDownloading] = useState(false);
 
+  // Video Consult State
+  const [videoConsultOpen, setVideoConsultOpen] = useState(false);
+  const [videoStream, setVideoStream] = useState<MediaStream | null>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+
+  const [consultStep, setConsultStep] = useState(0);
+  const [aiSpeech, setAiSpeech] = useState('');
+  const [userTranscript, setUserTranscript] = useState('');
+  const [isAiSpeaking, setIsAiSpeaking] = useState(false);
+  const [isUserSpeaking, setIsUserSpeaking] = useState(false);
+  const [patientInfo, setPatientInfo] = useState<string | null>(null);
+
   const prescriptionRef = useRef<HTMLDivElement>(null);
+  const recognitionRef = useRef<any>(null);
+  const accumulatedSymptomsRef = useRef<string>('');
 
   useEffect(() => {
     fetchHistory();
+    loadFaceModels();
+
+    // Setup Web Speech API if available
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (SpeechRecognition) {
+      recognitionRef.current = new SpeechRecognition();
+      recognitionRef.current.lang = 'en-US';
+      recognitionRef.current.interimResults = true;
+      recognitionRef.current.maxAlternatives = 1;
+    }
+
+    return () => {
+      if (videoStream) {
+        videoStream.getTracks().forEach(track => track.stop());
+      }
+      window.speechSynthesis.cancel();
+      if (recognitionRef.current) {
+        try { recognitionRef.current.stop(); } catch (e) { }
+      }
+    };
   }, []);
+
+  const loadFaceModels = async () => {
+    try {
+      await faceapi.nets.tinyFaceDetector.loadFromUri('/models');
+      await faceapi.nets.ageGenderNet.loadFromUri('/models');
+      console.log('Face models loaded');
+    } catch (e) {
+      console.error('Failed to load face models', e);
+    }
+  };
 
   const fetchHistory = async () => {
     try {
@@ -153,19 +178,32 @@ export default function MedicalAi() {
     }
   };
 
-  const handleAnalyze = async () => {
-    if (!symptoms) return;
+  const executeAnalysis = async (overrideSymptoms: string, isVideoMode: boolean = false) => {
     setLoading(true);
     try {
-      const result = await analyzeSymptoms(userId, symptoms);
+      const result = await analyzeSymptoms(userId, overrideSymptoms);
+
+      if (result.isValid === false) {
+        if (!isVideoMode && !videoConsultOpen) alert(result.message || "Invalid symptoms provided.");
+        return { isValid: false, message: result.message };
+      }
+
       setCurrentConsultation(result.consultation);
       setConsultations([result.consultation, ...consultations]);
       setSymptoms('');
+      return { isValid: true };
     } catch (error) {
       console.error('Analysis failed', error);
+      if (!isVideoMode && !videoConsultOpen) alert('Failed to analyze symptoms. Please try again.');
+      return { isValid: false, message: 'Analysis failed.' };
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleAnalyze = async () => {
+    if (!symptoms) return;
+    executeAnalysis(symptoms);
   };
 
   const handleApprove = async (id: string) => {
@@ -210,11 +248,199 @@ export default function MedicalAi() {
     }
   };
 
+  // -------------------------------------------------------------
+  // Video Consult Realtime Logic
+  // -------------------------------------------------------------
+  const startVideoConsult = async () => {
+    setVideoConsultOpen(true);
+    setConsultStep(0);
+    setPatientInfo(null);
+    setAiSpeech('Connecting to AI Assistant...');
+    setUserTranscript('');
+    accumulatedSymptomsRef.current = '';
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+      setVideoStream(stream);
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+      }
+
+      setTimeout(() => {
+        setConsultStep(1);
+        speak("Hello, I am Dr. AI Assistant. Could you please tell me your name?", () => {
+          startListening(1, "I didn't catch that. Could you please tell me your name?");
+        });
+      }, 2000);
+
+    } catch (err) {
+      console.error('Camera access denied', err);
+      setAiSpeech('Camera or microphone access denied. Please allow permissions in your browser.');
+    }
+  };
+
+  const stopVideoConsult = () => {
+    if (videoStream) {
+      videoStream.getTracks().forEach(track => track.stop());
+      setVideoStream(null);
+    }
+    window.speechSynthesis.cancel();
+    if (recognitionRef.current) {
+      try { recognitionRef.current.stop(); } catch (e) { }
+    }
+    setVideoConsultOpen(false);
+  };
+
+  const speak = (text: string, nextAction?: () => void) => {
+    setAiSpeech(text);
+    setIsAiSpeaking(true);
+    setIsUserSpeaking(false);
+
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      const utterance = new SpeechSynthesisUtterance(text);
+      const voices = window.speechSynthesis.getVoices();
+      const englishVoice = voices.find(v => v.lang.startsWith('en-') && (v.name.includes('Female') || v.name.includes('Google')));
+      if (englishVoice) utterance.voice = englishVoice;
+
+      utterance.onend = () => {
+        setIsAiSpeaking(false);
+        if (nextAction) nextAction();
+      };
+
+      window.speechSynthesis.speak(utterance);
+    } else {
+      setTimeout(() => {
+        setIsAiSpeaking(false);
+        if (nextAction) nextAction();
+      }, 3000);
+    }
+  };
+
+  const startListening = (step: number, repromptText: string) => {
+    if (!recognitionRef.current) {
+      console.warn('Speech recognition not supported.');
+      setUserTranscript('Speech recognition not supported in this browser.');
+      return;
+    }
+
+    setIsUserSpeaking(true);
+    setUserTranscript("Listening...");
+
+    let finalTranscript = '';
+    let timeoutId: any;
+
+    const recognition = recognitionRef.current;
+
+    recognition.onresult = (event: any) => {
+      let interimTranscript = '';
+      for (let i = event.resultIndex; i < event.results.length; ++i) {
+        if (event.results[i].isFinal) {
+          finalTranscript += event.results[i][0].transcript;
+        } else {
+          interimTranscript += event.results[i][0].transcript;
+        }
+      }
+      setUserTranscript(finalTranscript || interimTranscript);
+      clearTimeout(timeoutId); // User is speaking, prevent timeout
+
+      // Reset timeout while speaking
+      timeoutId = setTimeout(() => {
+        try { recognition.stop(); } catch (e) { }
+      }, 3000);
+    };
+
+    recognition.onspeechend = () => {
+      try { recognition.stop(); } catch (e) { }
+    };
+
+    recognition.onend = () => {
+      clearTimeout(timeoutId);
+      setIsUserSpeaking(false);
+
+      const speech = finalTranscript.trim();
+      if (!speech) {
+        setUserTranscript('');
+        speak(repromptText, () => startListening(step, repromptText));
+      } else {
+        handleUserSpeech(step, speech);
+      }
+    };
+
+    // If no speech is detected for 5 seconds
+    timeoutId = setTimeout(() => {
+      try { recognition.stop(); } catch (e) { }
+    }, 5000);
+
+    try {
+      recognition.start();
+    } catch (e) {
+      console.error(e);
+      // fallback
+      setIsUserSpeaking(false);
+    }
+  };
+
+  const handleUserSpeech = async (step: number, speech: string) => {
+    if (step === 1) {
+      setConsultStep(2);
+      // Wait a moment before running face detection
+      setTimeout(() => {
+        runFaceDetection(speech);
+      }, 500);
+    } else if (step === 2) {
+      setConsultStep(3);
+      speak(`I am verifying your response...`, async () => {
+        const newSymptoms = accumulatedSymptomsRef.current ? accumulatedSymptomsRef.current + ". " + speech : speech;
+        accumulatedSymptomsRef.current = newSymptoms;
+        setSymptoms(newSymptoms);
+        const result = await executeAnalysis(newSymptoms, true);
+        if (result && result.isValid === false) {
+          setConsultStep(2);
+          speak(result.message || "I didn't detect any medical symptoms. Please tell me your symptoms clearly.", () => {
+            startListening(2, "Please tell me your symptoms.");
+          });
+        } else {
+          speak(`I understand. Based on your symptoms, I have generated a clinical prescription for you.`, () => {
+            stopVideoConsult();
+          });
+        }
+      });
+    }
+  };
+
+  const runFaceDetection = async (userName: string) => {
+    if (videoRef.current) {
+      try {
+        const detection = await faceapi.detectSingleFace(videoRef.current, new faceapi.TinyFaceDetectorOptions()).withAgeAndGender();
+        if (detection) {
+          const age = Math.round(detection.age);
+          const gender = detection.gender;
+          setPatientInfo(`Age: ~${age} | Gender: ${gender}`);
+          speak(`Thank you ${userName}. I have scanned your face. I estimate you are a ${age} year old ${gender}. What symptoms are you experiencing today?`, () => {
+            startListening(2, "Please tell me what symptoms you are experiencing today.");
+          });
+        } else {
+          speak(`Thank you ${userName}. I couldn't detect your face clearly, but that's alright. What symptoms are you experiencing today?`, () => {
+            startListening(2, "Please tell me what symptoms you are experiencing today.");
+          });
+        }
+      } catch (e) {
+        console.error('Face detection error', e);
+        speak(`Thank you ${userName}. What symptoms are you experiencing today?`, () => {
+          startListening(2, "Please tell me what symptoms you are experiencing today.");
+        });
+      }
+    }
+  };
+
+  // -------------------------------------------------------------
+  // Render
+  // -------------------------------------------------------------
   return (
     <div className="flex h-screen bg-slate-50 text-slate-700 font-sans selection:bg-indigo-100 overflow-hidden">
 
       {/* Sidebar */}
-      <aside className="w-[280px] bg-white border-r border-slate-100 flex flex-col flex-shrink-0">
+      <aside className="w-[280px] bg-white border-r border-slate-100 flex flex-col flex-shrink-0 z-10">
         <div className="p-5 border-b border-slate-100 flex items-center justify-between">
           <Link href="/" className="flex items-center gap-2.5 group">
             <div className="w-9 h-9 gradient-bg rounded-xl flex items-center justify-center shadow-sm shadow-indigo-100">
@@ -246,13 +472,13 @@ export default function MedicalAi() {
                 key={item.id}
                 onClick={() => setCurrentConsultation(item)}
                 className={`w-full group text-left p-3 rounded-xl transition-all flex items-center gap-3 ${currentConsultation?.id === item.id
-                    ? 'bg-indigo-50 border border-indigo-100'
-                    : 'hover:bg-slate-50 border border-transparent'
+                  ? 'bg-indigo-50 border border-indigo-100'
+                  : 'hover:bg-slate-50 border border-transparent'
                   }`}
               >
                 <div className={`w-9 h-9 rounded-lg flex items-center justify-center transition-all ${currentConsultation?.id === item.id
-                    ? 'bg-indigo-100 text-indigo-600'
-                    : 'bg-slate-50 text-slate-400'
+                  ? 'bg-indigo-100 text-indigo-600'
+                  : 'bg-slate-50 text-slate-400'
                   }`}>
                   <Activity className="w-4 h-4" />
                 </div>
@@ -288,10 +514,10 @@ export default function MedicalAi() {
       </aside>
 
       {/* Main Content Area */}
-      <div className="flex-1 flex flex-col bg-slate-50">
+      <div className="flex-1 flex flex-col bg-slate-50 relative z-0">
 
         {/* Top Navigation Bar */}
-        <header className="h-[72px] bg-white border-b border-slate-100 px-6 flex items-center justify-between">
+        <header className="h-[72px] bg-white border-b border-slate-100 px-6 flex items-center justify-between relative z-10">
           <div className="flex items-center gap-5 flex-1">
             <HistoryIcon className="w-5 h-5 text-slate-300 cursor-pointer hover:text-slate-600 transition-colors" />
             <div className="relative flex-1 max-w-[500px] group">
@@ -312,6 +538,13 @@ export default function MedicalAi() {
             >
               <Sparkles className={`w-4 h-4 ${loading ? 'animate-pulse' : ''}`} />
               {loading ? 'Analyzing...' : 'Generate'}
+            </button>
+            <button
+              onClick={startVideoConsult}
+              className="bg-indigo-50 text-indigo-600 border border-indigo-100 px-5 py-2.5 rounded-xl font-bold text-sm flex items-center gap-2.5 hover:bg-indigo-100 active:scale-95 transition-all ml-2 shadow-sm"
+            >
+              <Video className="w-4 h-4" />
+              Live Consult
             </button>
           </div>
 
@@ -338,21 +571,25 @@ export default function MedicalAi() {
                 exit={{ opacity: 0, y: -20 }}
                 className="max-w-3xl w-full text-center mt-16"
               >
-                <div className="w-24 h-24 gradient-bg rounded-3xl mx-auto flex items-center justify-center shadow-xl shadow-indigo-100 mb-10">
-                  <Sparkles className="w-12 h-12 text-white" />
+                <div className="w-24 h-24 gradient-bg rounded-3xl mx-auto flex items-center justify-center shadow-xl shadow-indigo-100 mb-10 relative">
+                  <Sparkles className="w-12 h-12 text-white absolute" />
+                  <div className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 rounded-full animate-ping opacity-75"></div>
+                  <div className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 rounded-full flex items-center justify-center">
+                    <Video className="w-3 h-3 text-white" />
+                  </div>
                 </div>
                 <h2 className="text-4xl font-bold text-slate-900 mb-5 tracking-tight">Ready for Assessment?</h2>
                 <p className="text-lg text-slate-500 leading-relaxed max-w-xl mx-auto mb-14">
-                  Enter your symptoms above and watch our AI Agent analyze, assess, and suggest a clinical path with professional precision.
+                  Enter your symptoms or start a <span className="text-indigo-600 font-bold">Live Video Consult</span>. Our AI Agent will analyze your condition, detect key vitals, and generate a professional clinical prescription.
                 </p>
 
                 <div className="grid grid-cols-3 gap-6">
                   <div className="p-7 bg-white border border-slate-100 rounded-2xl group card-hover">
                     <div className="w-12 h-12 bg-indigo-50 rounded-xl flex items-center justify-center mx-auto mb-4 group-hover:bg-indigo-100 transition-all">
-                      <Layout className="w-6 h-6 text-indigo-600" />
+                      <Video className="w-6 h-6 text-indigo-600" />
                     </div>
-                    <div className="text-[13px] font-bold text-slate-900 mb-1">Smart Assessment</div>
-                    <div className="text-[11px] text-slate-400">UI-driven clinical logic</div>
+                    <div className="text-[13px] font-bold text-slate-900 mb-1">Live AI Video</div>
+                    <div className="text-[11px] text-slate-400">Real-time interaction</div>
                   </div>
                   <div className="p-7 bg-white border border-slate-100 rounded-2xl group card-hover">
                     <div className="w-12 h-12 bg-cyan-50 rounded-xl flex items-center justify-center mx-auto mb-4 group-hover:bg-cyan-100 transition-all">
@@ -413,6 +650,122 @@ export default function MedicalAi() {
           </AnimatePresence>
         </main>
       </div>
+
+      {/* Video Consult Modal Overlay */}
+      <AnimatePresence>
+        {videoConsultOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-slate-900/95 backdrop-blur-xl flex flex-col items-center justify-center p-6 font-sans"
+          >
+            <div className="w-full max-w-5xl bg-slate-900 rounded-[2rem] overflow-hidden border border-slate-700 shadow-2xl relative flex flex-col h-[85vh]">
+
+              {/* Header */}
+              <div className="absolute top-6 left-6 z-10 flex items-center gap-4 bg-slate-900/50 backdrop-blur-md p-3 rounded-2xl border border-slate-700/50">
+                <div className="w-12 h-12 bg-indigo-600 rounded-full flex items-center justify-center shadow-lg animate-pulse relative">
+                  <Video className="w-6 h-6 text-white" />
+                  <div className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full animate-ping" />
+                  <div className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full" />
+                </div>
+                <div>
+                  <div className="text-white font-bold text-lg leading-tight">Dr. AI Assistant</div>
+                  <div className="text-indigo-400 text-[11px] font-bold uppercase tracking-widest">Live Video Consultation</div>
+                </div>
+              </div>
+
+              {/* Video Feed */}
+              <div className="flex-1 relative bg-black flex items-center justify-center overflow-hidden">
+                <video
+                  ref={videoRef}
+                  autoPlay
+                  playsInline
+                  muted
+                  className="w-full h-full object-cover opacity-80"
+                />
+
+                {/* Face Detection Overlay (shown once patientInfo is populated) */}
+                {patientInfo && (
+                  <motion.div
+                    initial={{ opacity: 0, scale: 0.8 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    className="absolute inset-0 flex items-center justify-center pointer-events-none"
+                  >
+                    <div className="w-72 h-72 border-2 border-indigo-500/50 rounded-2xl relative">
+                      <div className="absolute -top-1 -left-1 w-8 h-8 border-t-4 border-l-4 border-indigo-500 rounded-tl-xl" />
+                      <div className="absolute -top-1 -right-1 w-8 h-8 border-t-4 border-r-4 border-indigo-500 rounded-tr-xl" />
+                      <div className="absolute -bottom-1 -left-1 w-8 h-8 border-b-4 border-l-4 border-indigo-500 rounded-bl-xl" />
+                      <div className="absolute -bottom-1 -right-1 w-8 h-8 border-b-4 border-r-4 border-indigo-500 rounded-br-xl" />
+
+                      <motion.div
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="absolute -bottom-12 left-1/2 -translate-x-1/2 bg-indigo-600/90 backdrop-blur-sm text-white text-[11px] font-bold px-4 py-1.5 rounded-full uppercase tracking-wider flex items-center gap-2 whitespace-nowrap shadow-lg"
+                      >
+                        <ShieldCheck className="w-4 h-4" /> {patientInfo} | Match: 98%
+                      </motion.div>
+                    </div>
+                  </motion.div>
+                )}
+              </div>
+
+              {/* Subtitles / Chat */}
+              <div className="h-56 bg-slate-800/90 backdrop-blur-md p-8 flex flex-col justify-end border-t border-slate-700 relative z-10">
+                <div className="max-w-4xl mx-auto w-full space-y-4">
+                  <AnimatePresence mode="popLayout">
+                    {isAiSpeaking && (
+                      <motion.div
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0 }}
+                        className="flex items-start gap-4"
+                      >
+                        <div className="w-10 h-10 rounded-full bg-indigo-600 flex items-center justify-center shrink-0 mt-1 shadow-lg shadow-indigo-500/20">
+                          <Sparkles className="w-5 h-5 text-white" />
+                        </div>
+                        <div className="bg-slate-700/50 backdrop-blur border border-slate-600/50 text-white p-4 px-5 rounded-2xl rounded-tl-sm text-lg font-medium shadow-inner max-w-2xl leading-relaxed">
+                          {aiSpeech}
+                        </div>
+                      </motion.div>
+                    )}
+
+                    {isUserSpeaking && (
+                      <motion.div
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0 }}
+                        className="flex items-start gap-4 justify-end"
+                      >
+                        <div className="bg-indigo-600/20 backdrop-blur border border-indigo-500/30 text-indigo-100 p-4 px-5 rounded-2xl rounded-tr-sm text-lg font-medium shadow-inner max-w-2xl leading-relaxed">
+                          {userTranscript || <span className="animate-pulse">Listening...</span>}
+                        </div>
+                        <div className="w-10 h-10 rounded-full bg-slate-600 flex items-center justify-center shrink-0 mt-1">
+                          <User className="w-5 h-5 text-white" />
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+              </div>
+
+              {/* Controls */}
+              <div className="absolute bottom-8 left-1/2 -translate-x-1/2 flex items-center gap-6 z-20">
+                <button className={`w-14 h-14 rounded-full backdrop-blur-md text-white flex items-center justify-center transition-colors border border-slate-600 ${isUserSpeaking ? 'bg-indigo-600 border-indigo-500 shadow-[0_0_15px_rgba(79,70,229,0.5)]' : 'bg-slate-700/80 hover:bg-slate-600'}`}>
+                  <Mic className="w-6 h-6" />
+                </button>
+                <button onClick={stopVideoConsult} className="w-16 h-16 rounded-full bg-red-500 text-white flex items-center justify-center hover:bg-red-600 transition-colors shadow-xl shadow-red-500/20 border-2 border-red-400">
+                  <PhoneOff className="w-7 h-7" />
+                </button>
+                <button className="w-14 h-14 rounded-full bg-slate-700/80 backdrop-blur-md text-white flex items-center justify-center hover:bg-slate-600 transition-colors border border-slate-600">
+                  <Video className="w-6 h-6" />
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
     </div>
   );
 }
