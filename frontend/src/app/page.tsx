@@ -32,18 +32,18 @@ export default function LandingPage() {
             <span className="text-xl font-bold tracking-tight text-slate-900">AI Studio</span>
           </Link>
 
-          <div className="hidden md:flex items-center gap-8 text-sm font-medium text-slate-500">
-            <Link href="#services" className="nav-link hover:text-slate-900 transition-colors">Services</Link>
-            <Link href="#features" className="nav-link hover:text-slate-900 transition-colors">Features</Link>
-            <Link href="#about" className="nav-link hover:text-slate-900 transition-colors">About Us</Link>
-            <Link href="/pricing" className="nav-link hover:text-slate-900 transition-colors">Pricing</Link>
+          <div className="hidden md:flex items-center gap-10 text-[15px] font-bold text-slate-800">
+            <Link href="#services" className="hover:text-indigo-600 transition-colors relative after:absolute after:bottom-0 after:left-0 after:w-0 after:h-0.5 after:bg-indigo-600 after:transition-all hover:after:w-full py-1">Services</Link>
+            <Link href="#features" className="hover:text-indigo-600 transition-colors relative after:absolute after:bottom-0 after:left-0 after:w-0 after:h-0.5 after:bg-indigo-600 after:transition-all hover:after:w-full py-1">Features</Link>
+            <Link href="#about" className="hover:text-indigo-600 transition-colors relative after:absolute after:bottom-0 after:left-0 after:w-0 after:h-0.5 after:bg-indigo-600 after:transition-all hover:after:w-full py-1">About Us</Link>
+            <Link href="/pricing" className="hover:text-indigo-600 transition-colors relative after:absolute after:bottom-0 after:left-0 after:w-0 after:h-0.5 after:bg-indigo-600 after:transition-all hover:after:w-full py-1">Pricing</Link>
           </div>
 
-          <div className="flex items-center gap-3">
-            <Link href="#services" className="hidden md:block text-sm font-medium text-slate-500 hover:text-slate-900 transition-colors px-4 py-2">
+          <div className="flex items-center gap-5">
+            <Link href="#services" className="hidden md:block text-[15px] font-bold text-slate-800 hover:text-indigo-600 transition-colors">
               Sign In
             </Link>
-            <Link href="#services" className="gradient-bg px-5 py-2.5 rounded-xl text-sm font-semibold text-white hover:opacity-90 transition-opacity shadow-lg shadow-indigo-200 flex items-center gap-2">
+            <Link href="#services" className="bg-indigo-600 hover:bg-indigo-700 px-7 py-3 rounded-full text-sm font-bold text-white transition-all shadow-lg shadow-indigo-600/20 flex items-center gap-2 hover:-translate-y-0.5 active:translate-y-0">
               Get Started <ArrowRight className="w-4 h-4" />
             </Link>
           </div>

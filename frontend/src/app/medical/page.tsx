@@ -245,23 +245,20 @@ export default function MedicalAi() {
               <button
                 key={item.id}
                 onClick={() => setCurrentConsultation(item)}
-                className={`w-full group text-left p-3 rounded-xl transition-all flex items-center gap-3 ${
-                  currentConsultation?.id === item.id
+                className={`w-full group text-left p-3 rounded-xl transition-all flex items-center gap-3 ${currentConsultation?.id === item.id
                     ? 'bg-indigo-50 border border-indigo-100'
                     : 'hover:bg-slate-50 border border-transparent'
-                }`}
+                  }`}
               >
-                <div className={`w-9 h-9 rounded-lg flex items-center justify-center transition-all ${
-                  currentConsultation?.id === item.id
+                <div className={`w-9 h-9 rounded-lg flex items-center justify-center transition-all ${currentConsultation?.id === item.id
                     ? 'bg-indigo-100 text-indigo-600'
                     : 'bg-slate-50 text-slate-400'
-                }`}>
+                  }`}>
                   <Activity className="w-4 h-4" />
                 </div>
                 <div className="flex-1 truncate">
-                  <div className={`text-[13px] font-semibold truncate max-w-[150px] ${
-                    currentConsultation?.id === item.id ? 'text-indigo-700' : 'text-slate-700'
-                  }`}>
+                  <div className={`text-[13px] font-semibold truncate max-w-[150px] ${currentConsultation?.id === item.id ? 'text-indigo-700' : 'text-slate-700'
+                    }`}>
                     {item.symptoms}
                   </div>
                   <div className="text-[10px] text-slate-400 mt-0.5">{new Date(item.createdAt).toLocaleDateString()}</div>
@@ -310,7 +307,7 @@ export default function MedicalAi() {
             </div>
             <button
               onClick={handleAnalyze}
-              disabled={loading || !symptoms}
+              disabled={loading}
               className="gradient-bg text-white px-7 py-2.5 rounded-xl font-bold text-sm flex items-center gap-2.5 shadow-lg shadow-indigo-100 hover:scale-[1.02] active:scale-95 transition-all disabled:opacity-50"
             >
               <Sparkles className={`w-4 h-4 ${loading ? 'animate-pulse' : ''}`} />
