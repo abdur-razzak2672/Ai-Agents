@@ -13,14 +13,12 @@ import {
   Video, Mic, MicOff, PhoneOff
 } from 'lucide-react';
 
-// Professional Prescription Preview
 const ProfessionalPrescription = ({ consultation, innerRef }: { consultation: any, innerRef: React.RefObject<HTMLDivElement | null> }) => {
   if (!consultation) return null;
   const prescription = consultation.doctorPrescription || consultation.aiPrescription;
 
   return (
     <div className="bg-white text-slate-900 p-0 font-sans relative flex flex-col w-full max-w-[720px] mx-auto min-h-[900px] rounded-2xl overflow-hidden border border-slate-100">
-      {/* Header */}
       <div className="p-10 pb-8 flex justify-between items-start border-b border-slate-100 bg-slate-50/50">
         <div className="w-[65%]">
           <div className="flex items-center gap-2.5 mb-2">
@@ -47,13 +45,11 @@ const ProfessionalPrescription = ({ consultation, innerRef }: { consultation: an
         </div>
       </div>
 
-      {/* Info Bar */}
       <div className="bg-indigo-50/50 px-10 py-4 flex border-b border-slate-100 text-[11px] font-bold text-slate-600">
         <div className="flex-1">Patient: <span className="text-slate-950">Test User</span></div>
         <div className="w-32 text-right">Date: <span className="text-slate-950">{new Date(consultation.createdAt).toLocaleDateString()}</span></div>
       </div>
 
-      {/* Content */}
       <div className="flex-1 flex relative">
         <div className="w-[32%] border-r border-slate-100 p-8 space-y-8 bg-slate-50/30">
           <div>
@@ -119,7 +115,6 @@ export default function MedicalAi() {
   const [userId] = useState('user-123');
   const [downloading, setDownloading] = useState(false);
 
-  // Video Consult State
   const [videoConsultOpen, setVideoConsultOpen] = useState(false);
   const [videoStream, setVideoStream] = useState<MediaStream | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -139,7 +134,6 @@ export default function MedicalAi() {
     fetchHistory();
     loadFaceModels();
 
-    // Setup Web Speech API if available
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (SpeechRecognition) {
       recognitionRef.current = new SpeechRecognition();

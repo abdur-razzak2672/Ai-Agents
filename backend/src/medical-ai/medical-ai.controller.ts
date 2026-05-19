@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Body, Param, Patch, Query } from '@nestjs/common';
+import { Controller, Post, Get, Body, Param, Patch } from '@nestjs/common';
 import { MedicalAiService } from './medical-ai.service';
 
 @Controller('medical')
@@ -23,7 +23,12 @@ export class MedicalAiController {
   @Patch('verify/:id')
   async verifyPrescription(
     @Param('id') id: string,
-    @Body() body: { doctorPrescription: any; doctorComments: string; status: 'APPROVED' | 'REJECTED' }
+    @Body()
+    body: {
+      doctorPrescription: any;
+      doctorComments: string;
+      status: 'APPROVED' | 'REJECTED';
+    },
   ) {
     return this.medicalAiService.verifyPrescription(id, body);
   }

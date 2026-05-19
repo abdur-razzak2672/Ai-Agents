@@ -3,7 +3,7 @@ import { GenerationService } from './generation.service';
 
 @Controller('generations')
 export class GenerationController {
-  constructor(private readonly generationService: GenerationService) { }
+  constructor(private readonly generationService: GenerationService) {}
 
   @Post()
   async generate(@Body('url') url: string) {

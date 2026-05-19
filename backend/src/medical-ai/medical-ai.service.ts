@@ -1,25 +1,83 @@
-import { Injectable, InternalServerErrorException, HttpException, HttpStatus } from '@nestjs/common';
+import { Injectable, InternalServerErrorException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
 import { PrismaService } from '../prisma/prisma.service';
+import { Prisma } from '@prisma/client';
+import { z } from 'zod';
+
+const medicalAiSchema = z.object({
+  isValid: z
+    .boolean()
+    .describe(
+      'Whether the input actually contains clear medical symptoms or health-related queries',
+    ),
+  errorMessage: z
+    .string()
+    .nullable()
+    .describe(
+      'A polite message asking clarifying questions if isValid is false; null otherwise',
+    ),
+  summarizedSymptoms: z
+    .string()
+    .nullable()
+    .describe(
+      "Short string of extracted keywords (e.g. 'Cold, Fever') or null if not valid",
+    ),
+  potentialConditions: z
+    .array(z.string())
+    .describe(
+      'Potential conditions (disclaimer: not final diagnosis) or empty list if not valid',
+    ),
+  prescription: z
+    .object({
+      medications: z
+        .array(
+          z.object({
+            name: z.string(),
+            dosage: z.string(),
+            frequency: z.string(),
+            duration: z.string(),
+          }),
+        )
+        .describe('List of preliminary medications'),
+      instructions: z
+        .string()
+        .describe('General instructions for taking the meds'),
+    })
+    .nullable()
+    .describe('Preliminary prescription or null if not valid'),
+  diagnosticTests: z
+    .array(z.string())
+    .describe(
+      'Suggested necessary diagnostic tests or empty list if not valid',
+    ),
+  advice: z
+    .string()
+    .nullable()
+    .describe(
+      'General health advice or immediate care instructions, or null if not valid',
+    ),
+  urgency: z
+    .enum(['LOW', 'MEDIUM', 'HIGH'])
+    .describe('Urgency level: LOW, MEDIUM, or HIGH'),
+});
 
 @Injectable()
 export class MedicalAiService {
-  private genAI: GoogleGenerativeAI;
-  private model: any;
+  private model: ChatGoogleGenerativeAI;
 
   constructor(
     private configService: ConfigService,
-    private prisma: PrismaService
+    private prisma: PrismaService,
   ) {
     const apiKey = this.configService.get<string>('GEMINI_API_KEY');
     if (!apiKey) {
       throw new InternalServerErrorException('GEMINI_API_KEY is not defined.');
     }
-    this.genAI = new GoogleGenerativeAI(apiKey);
-    this.model = this.genAI.getGenerativeModel({
+    this.model = new ChatGoogleGenerativeAI({
+      apiKey,
       model: 'gemini-2.5-flash',
-      generationConfig: { responseMimeType: 'application/json' }
+      temperature: 0.2,
     });
   }
 
@@ -37,30 +95,12 @@ export class MedicalAiService {
       6. Suggest necessary diagnostic tests.
       7. Provide advice on lifestyle or immediate care.
 
-      Return the response in the exact following JSON format:
-      {
-        "isValid": true,
-        "errorMessage": null,
-        "summarizedSymptoms": "Short string of extracted keywords (e.g. 'Cold, Fever')",
-        "potentialConditions": ["Condition 1", "Condition 2"],
-        "prescription": {
-          "medications": [
-            { "name": "Medication Name", "dosage": "e.g. 500mg", "frequency": "e.g. 1+0+1", "duration": "5 days" }
-          ],
-          "instructions": "General instructions for taking the meds"
-        },
-        "diagnosticTests": ["Test 1", "Test 2"],
-        "advice": "General health advice",
-        "urgency": "LOW | MEDIUM | HIGH"
-      }
-
       CRITICAL: Be professional and accurate. Always include a disclaimer that this must be verified by a doctor.
     `;
 
     try {
-      const result = await this.model.generateContent(prompt);
-      const response = result.response;
-      const aiResponse = JSON.parse(response.text());
+      const structuredModel = this.model.withStructuredOutput(medicalAiSchema);
+      const aiResponse = await structuredModel.invoke(prompt);
 
       if (aiResponse.isValid === false) {
         return { isValid: false, message: aiResponse.errorMessage };
@@ -70,7 +110,11 @@ export class MedicalAiService {
       await this.prisma.user.upsert({
         where: { id: userId },
         update: {},
-        create: { id: userId, email: `${userId}@example.com`, name: 'Test User' },
+        create: {
+          id: userId,
+          email: `${userId}@example.com`,
+          name: 'Test User',
+        },
       });
 
       // Save to database
@@ -78,14 +122,14 @@ export class MedicalAiService {
         data: {
           userId,
           symptoms: aiResponse.summarizedSymptoms || symptoms, // Fallback to raw if not present
-          aiPrescription: aiResponse.prescription,
+          aiPrescription: aiResponse.prescription as Prisma.InputJsonValue,
           diagnosticTests: aiResponse.diagnosticTests,
           status: 'PENDING',
         },
       });
 
       return { isValid: true, consultation, analysis: aiResponse };
-    } catch (error: any) {
+    } catch (error) {
       console.error('Medical AI Error:', error);
       throw new InternalServerErrorException('Failed to analyze symptoms.');
     }
@@ -98,7 +142,14 @@ export class MedicalAiService {
     });
   }
 
-  async verifyPrescription(id: string, updateData: { doctorPrescription: any, doctorComments: string, status: 'APPROVED' | 'REJECTED' }) {
+  async verifyPrescription(
+    id: string,
+    updateData: {
+      doctorPrescription: Prisma.InputJsonValue;
+      doctorComments: string;
+      status: 'APPROVED' | 'REJECTED';
+    },
+  ) {
     return this.prisma.consultation.update({
       where: { id },
       data: {
